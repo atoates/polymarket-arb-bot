@@ -131,15 +131,18 @@ def markets_detail(condition_id, json_output):
         click.echo(json.dumps(market, indent=2))
         return
 
+    yes_str = f"${market['yes_price']:.2f}" if market.get('yes_price') is not None else "N/A"
+    no_str = f"${market['no_price']:.2f}" if market.get('no_price') is not None else "N/A"
+
     console.print(Panel(
         f"[bold]{market['question']}[/bold]\n\n"
         f"Condition ID: {market['condition_id']}\n"
-        f"YES: [green]${market['yes_price']:.2f}[/green]  "
-        f"NO: [red]${market['no_price']:.2f}[/red]\n"
-        f"Volume 24h: ${market['volume_24h']:,.0f}\n"
-        f"Liquidity: ${market['liquidity']:,.0f}\n"
-        f"Category: {market['category']}\n"
-        f"End date: {market['end_date']}",
+        f"YES: [green]{yes_str}[/green]  "
+        f"NO: [red]{no_str}[/red]\n"
+        f"Volume 24h: ${market.get('volume_24h', 0):,.0f}\n"
+        f"Liquidity: ${market.get('liquidity', 0):,.0f}\n"
+        f"Category: {market.get('category', 'N/A')}\n"
+        f"End date: {market.get('end_date', 'N/A')}",
         title="Market Detail",
     ))
 
