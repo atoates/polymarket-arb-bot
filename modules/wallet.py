@@ -108,6 +108,8 @@ def approve_contracts() -> list[dict]:
     ]
 
     results = []
+    nonce = w3.eth.get_transaction_count(address)
+
     for label, token_addr, spender in approvals:
         contract = w3.eth.contract(address=token_addr, abi=ERC20_ABI)
         current = contract.functions.allowance(address, spender).call()
@@ -117,23 +119,28 @@ def approve_contracts() -> list[dict]:
             logger.info(f"{label}: already approved")
             continue
 
-        tx = contract.functions.approve(spender, MAX_UINT256).build_transaction({
-            "from": address,
-            "nonce": w3.eth.get_transaction_count(address),
-            "gas": 60_000,
-            "gasPrice": w3.eth.gas_price,
-            "chainId": 137,
-        })
+        try:
+            tx = contract.functions.approve(spender, MAX_UINT256).build_transaction({
+                "from": address,
+                "nonce": nonce,
+                "gas": 60_000,
+                "gasPrice": w3.eth.gas_price,
+                "chainId": 137,
+            })
 
-        signed = account.sign_transaction(tx)
-        tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-        receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)
+            signed = account.sign_transaction(tx)
+            tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
+            receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=60)
+            nonce += 1  # Increment for next tx
 
-        results.append({
-            "label": label,
-            "status": "approved" if receipt["status"] == 1 else "failed",
-            "tx": tx_hash.hex(),
-        })
-        logger.info(f"{label}: tx {tx_hash.hex()} (status={receipt['status']})")
+            results.append({
+                "label": label,
+                "status": "approved" if receipt["status"] == 1 else "failed",
+                "tx": tx_hash.hex(),
+            })
+            logger.info(f"{label}: tx {tx_hash.hex()} (status={receipt['status']})")
+        except Exception as e:
+            results.append({"label": label, "status": f"error: {e}", "tx": None})
+            logger.error(f"{label}: failed: {e}")
 
     return results

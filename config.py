@@ -37,7 +37,9 @@ MIN_LIQUIDITY = float(os.getenv("MIN_LIQUIDITY", "100.0"))
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 
 # ── Signature Type ──────────────────────────────────────────────────
-SIGNATURE_TYPE = int(os.getenv("SIGNATURE_TYPE", "1"))
+# 0 = EOA (raw private key), 1 = Magic/Email wallet, 2 = Browser wallet
+# Default to 0 (EOA) since we use a raw private key
+SIGNATURE_TYPE = int(os.getenv("SIGNATURE_TYPE", "0"))
 
 # ── OpenClaw ────────────────────────────────────────────────────────
 OPENCLAW_URL = os.getenv("OPENCLAW_URL", "https://vttrades.up.railway.app")

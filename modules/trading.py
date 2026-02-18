@@ -52,7 +52,7 @@ def _get_clob_client() -> ClobClient:
         key=api_key,
         chain_id=chain_id,
         private_key=pk if pk.startswith("0x") else f"0x{pk}",
-        signature_type=int(os.getenv("SIGNATURE_TYPE", "1")),
+        signature_type=int(os.getenv("SIGNATURE_TYPE", "0")),
         api_creds={
             "api_key": api_key,
             "api_secret": api_secret,
@@ -73,9 +73,20 @@ def split_position(condition_id: str, amount_usdc: float) -> dict:
     # Partition: [1, 2] = [YES, NO] for binary markets
     partition = [1, 2]
     parent_collection = b"\x00" * 32
-    condition_bytes = bytes.fromhex(
-        condition_id if not condition_id.startswith("0x") else condition_id[2:]
-    )
+
+    # Clean and validate condition_id as hex bytes32
+    cid = condition_id.strip()
+    if cid.startswith("0x"):
+        cid = cid[2:]
+    # Pad to 64 hex chars (32 bytes) if shorter
+    cid = cid.zfill(64)
+    try:
+        condition_bytes = bytes.fromhex(cid)
+    except ValueError:
+        raise ValueError(
+            f"condition_id is not valid hex: {condition_id!r}. "
+            "Make sure you're passing the condition_id, not a CLOB token_id."
+        )
 
     tx = ctf.functions.splitPosition(
         USDC_E,
