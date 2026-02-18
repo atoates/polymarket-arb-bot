@@ -201,6 +201,13 @@ def buy_cmd(condition_id, side, amount, skip_sell, dry_run):
         console.print("[red]Market not found[/red]")
         return
 
+    # Use the resolved hex condition_id from market data, NOT the user input
+    # (user may have passed a numeric Gamma ID or slug)
+    resolved_condition_id = market.get("condition_id", "")
+    if not resolved_condition_id:
+        console.print("[red]Market has no condition_id — cannot trade[/red]")
+        return
+
     side = side.upper()
     current_price = market["yes_price"] if side == "YES" else market["no_price"]
 
@@ -210,12 +217,13 @@ def buy_cmd(condition_id, side, amount, skip_sell, dry_run):
 
     console.print(
         f"Buying [bold]{side}[/bold] on: {market['question']}\n"
+        f"Condition ID: {resolved_condition_id}\n"
         f"Current price: ${current_price:.2f} | Amount: ${amount:.2f}"
     )
 
     effective_dry_run = dry_run or DRY_RUN
     result = buy(
-        condition_id=condition_id,
+        condition_id=resolved_condition_id,
         side=side,
         amount_usdc=amount,
         current_price=current_price,

@@ -11,7 +11,7 @@ import json
 import time
 from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import OrderArgs, OrderType
-from modules.wallet import _get_web3, _get_account, CTF_EXCHANGE, USDC_E
+from modules.wallet import _get_web3, _get_account, CTF_EXCHANGE, CTF_CONTRACT, USDC_E
 from modules.positions import record_position
 from utils.logger import get_logger
 from utils.notifier import notify_trade
@@ -36,29 +36,64 @@ CTF_EXCHANGE_ABI = [
 
 
 def _get_clob_client() -> ClobClient:
-    """Create authenticated CLOB client."""
+    """
+    Create authenticated CLOB client.
+
+    Uses py-clob-client's actual constructor:
+      ClobClient(host, chain_id, key, creds, signature_type, funder)
+
+    If CLOB API credentials (api_key/secret/passphrase) are not set,
+    automatically derives them from the private key.
+    """
+    from py_clob_client.clob_types import ApiCreds
+
+    pk = os.getenv("POLYCLAW_PRIVATE_KEY", "")
+    if not pk:
+        raise EnvironmentError("POLYCLAW_PRIVATE_KEY not set")
+    if not pk.startswith("0x"):
+        pk = f"0x{pk}"
+
+    chain_id = int(os.getenv("CHAIN_ID", "137"))
+    sig_type = int(os.getenv("SIGNATURE_TYPE", "0"))
+    host = os.getenv("CLOB_API_URL", "https://clob.polymarket.com")
+
     api_key = os.getenv("POLYMARKET_API_KEY", "")
     api_secret = os.getenv("POLYMARKET_API_SECRET", "")
     passphrase = os.getenv("POLYMARKET_PASSPHRASE", "")
-    pk = os.getenv("POLYCLAW_PRIVATE_KEY", "")
 
-    if not all([api_key, api_secret, passphrase, pk]):
-        raise EnvironmentError("Missing CLOB credentials. Check .env file.")
+    if all([api_key, api_secret, passphrase]):
+        # Use provided credentials
+        creds = ApiCreds(
+            api_key=api_key,
+            api_secret=api_secret,
+            api_passphrase=passphrase,
+        )
+        client = ClobClient(
+            host,
+            chain_id=chain_id,
+            key=pk,
+            creds=creds,
+            signature_type=sig_type,
+        )
+    else:
+        # Auto-derive credentials from private key (L1 → L2)
+        logger.info("No CLOB API credentials found — auto-deriving from private key")
+        client = ClobClient(
+            host,
+            chain_id=chain_id,
+            key=pk,
+            signature_type=sig_type,
+        )
+        creds = client.create_or_derive_api_creds()
+        if creds:
+            client.set_api_creds(creds)
+            logger.info(f"Derived CLOB API key: {creds.api_key[:12]}...")
+        else:
+            raise EnvironmentError(
+                "Failed to derive CLOB credentials. Set POLYMARKET_API_KEY, "
+                "POLYMARKET_API_SECRET, and POLYMARKET_PASSPHRASE manually."
+            )
 
-    chain_id = int(os.getenv("CHAIN_ID", "137"))
-
-    client = ClobClient(
-        host="https://clob.polymarket.com",
-        key=api_key,
-        chain_id=chain_id,
-        private_key=pk if pk.startswith("0x") else f"0x{pk}",
-        signature_type=int(os.getenv("SIGNATURE_TYPE", "0")),
-        api_creds={
-            "api_key": api_key,
-            "api_secret": api_secret,
-            "api_passphrase": passphrase,
-        },
-    )
     return client
 
 
@@ -68,7 +103,8 @@ def split_position(condition_id: str, amount_usdc: float) -> dict:
     account = _get_account(w3)
     amount_raw = int(amount_usdc * 1e6)  # 6 decimals
 
-    ctf = w3.eth.contract(address=CTF_EXCHANGE, abi=CTF_EXCHANGE_ABI)
+    # splitPosition is on the Conditional Tokens contract, NOT the Exchange
+    ctf = w3.eth.contract(address=CTF_CONTRACT, abi=CTF_EXCHANGE_ABI)
 
     # Partition: [1, 2] = [YES, NO] for binary markets
     partition = [1, 2]

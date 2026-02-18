@@ -79,31 +79,55 @@ async def _search_by_question(query: str, limit: int) -> list[dict]:
     return matched[:limit]
 
 
-async def get_market_detail(condition_id: str) -> dict | None:
+async def get_market_detail(market_id: str) -> dict | None:
     """
-    Get full details for a single market by condition ID.
+    Get full details for a single market by condition ID or numeric Gamma ID.
+
+    Supports:
+      - Hex condition_id (e.g. "0x5e5c9dfaf...")
+      - Numeric Gamma market ID (e.g. "1198423")
+      - Slug (e.g. "will-bitcoin-hit-100k")
 
     Filters to active, non-closed markets to avoid matching old/expired ones.
     """
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(
-            f"{GAMMA_API}/markets",
-            params={
-                "condition_id": condition_id,
-                "active": True,
-                "closed": False,
-            },
-        )
-        resp.raise_for_status()
-        markets = resp.json()
+    market_id = market_id.strip()
 
-    if not markets:
-        # Retry without active filter in case it's a specific lookup
+    # Determine lookup strategy
+    is_numeric = market_id.isdigit()
+    is_slug = not is_numeric and not market_id.startswith("0x") and len(market_id) < 40
+
+    if is_numeric:
+        # Look up by Gamma numeric ID
+        markets = await _lookup_by_gamma_id(market_id)
+    elif is_slug:
+        # Try slug lookup first
+        result = await get_market_by_slug(market_id)
+        if result:
+            return result
+        markets = []
+    else:
+        # Condition ID lookup (hex)
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(
                 f"{GAMMA_API}/markets",
-                params={"condition_id": condition_id},
+                params={
+                    "condition_id": market_id,
+                    "active": True,
+                    "closed": False,
+                },
             )
+            resp.raise_for_status()
+            markets = resp.json()
+
+    if not markets:
+        # Retry without active filter
+        async with httpx.AsyncClient(timeout=15) as client:
+            params = {}
+            if is_numeric:
+                params["id"] = market_id
+            else:
+                params["condition_id"] = market_id
+            resp = await client.get(f"{GAMMA_API}/markets", params=params)
             resp.raise_for_status()
             markets = resp.json()
 
@@ -131,6 +155,25 @@ async def get_market_detail(condition_id: str) -> dict | None:
             logger.warning(f"Could not fetch orderbook: {e}")
 
     return market
+
+
+async def _lookup_by_gamma_id(gamma_id: str) -> list[dict]:
+    """Look up a market by its numeric Gamma API ID."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        # Try the direct /markets/{id} endpoint first
+        resp = await client.get(f"{GAMMA_API}/markets/{gamma_id}")
+        if resp.status_code == 200:
+            data = resp.json()
+            if data:
+                return [data] if isinstance(data, dict) else data
+
+        # Fallback: query by id parameter
+        resp = await client.get(
+            f"{GAMMA_API}/markets",
+            params={"id": gamma_id},
+        )
+        resp.raise_for_status()
+        return resp.json()
 
 
 async def get_market_by_slug(slug: str) -> dict | None:
@@ -242,6 +285,7 @@ def _normalize_market(raw: dict) -> dict:
                 pass
 
     return {
+        "id": raw.get("id", ""),  # Numeric Gamma market ID
         "condition_id": raw.get("conditionId", raw.get("condition_id", "")),
         "question": raw.get("question", ""),
         "description": raw.get("description", ""),
