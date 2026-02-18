@@ -33,6 +33,13 @@ DRY_RUN = os.getenv("DRY_RUN", "true").lower() in ("true", "1", "yes")
 MAX_TRADES_PER_HOUR = int(os.getenv("MAX_TRADES_PER_HOUR", "20"))
 MIN_LIQUIDITY = float(os.getenv("MIN_LIQUIDITY", "100.0"))
 
+# ── Risk Management ─────────────────────────────────────────────────
+MAX_DRAWDOWN_PCT = float(os.getenv("MAX_DRAWDOWN_PCT", "20"))
+MAX_DAILY_LOSS = float(os.getenv("MAX_DAILY_LOSS", "50.0"))
+MAX_MARKET_EXPOSURE = float(os.getenv("MAX_MARKET_EXPOSURE", str(MAX_POSITION_SIZE * 3)))
+MAX_TOTAL_EXPOSURE = float(os.getenv("MAX_TOTAL_EXPOSURE", "500.0"))
+MAX_CONCURRENT_POSITIONS = int(os.getenv("MAX_CONCURRENT_POSITIONS", "10"))
+
 # ── Notifications ───────────────────────────────────────────────────
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 

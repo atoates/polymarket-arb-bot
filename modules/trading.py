@@ -152,30 +152,134 @@ def split_position(condition_id: str, amount_usdc: float) -> dict:
     return result
 
 
-def sell_on_clob(token_id: str, amount: float, price: float) -> dict | None:
-    """Sell tokens on the CLOB order book."""
+def place_order(
+    token_id: str,
+    side: str,
+    size: float,
+    price: float,
+    order_type: str = "GTC",
+    post_only: bool = False,
+) -> dict | None:
+    """
+    Place an order on the CLOB order book.
+
+    Args:
+        token_id: CLOB token ID for the outcome
+        side: "BUY" or "SELL"
+        size: Number of tokens
+        price: Price per token (0 < price < 1)
+        order_type: "GTC" (default), "GTD", "FOK"
+        post_only: If True, reject if order would cross the spread (maker only)
+    """
     max_retries = int(os.getenv("CLOB_MAX_RETRIES", "5"))
+    side = side.upper()
+    if side not in ("BUY", "SELL"):
+        raise ValueError(f"Side must be BUY or SELL, got: {side}")
+
+    ot_map = {"GTC": OrderType.GTC, "GTD": OrderType.GTD, "FOK": OrderType.FOK}
+    ot = ot_map.get(order_type.upper(), OrderType.GTC)
 
     for attempt in range(max_retries):
         try:
             client = _get_clob_client()
             order_args = OrderArgs(
                 price=price,
-                size=amount,
-                side="SELL",
+                size=size,
+                side=side,
                 token_id=token_id,
             )
-            resp = client.create_and_post_order(order_args)
-            logger.info(f"CLOB sell order placed: {resp}")
+            order = client.create_order(order_args)
+            resp = client.post_order(order, orderType=ot, post_only=post_only)
+            logger.info(f"CLOB {side} order placed: {resp}")
             return {"status": "placed", "response": resp, "attempt": attempt + 1}
 
         except Exception as e:
-            logger.warning(f"CLOB sell attempt {attempt + 1}/{max_retries} failed: {e}")
+            logger.warning(f"CLOB {side} attempt {attempt + 1}/{max_retries} failed: {e}")
             if attempt < max_retries - 1:
                 time.sleep(2 ** attempt)
 
-    logger.error("All CLOB sell attempts failed. Tokens remain in wallet.")
+    logger.error(f"All CLOB {side} attempts failed.")
     return None
+
+
+def sell_on_clob(token_id: str, amount: float, price: float) -> dict | None:
+    """Sell tokens on the CLOB order book (convenience wrapper)."""
+    return place_order(token_id, "SELL", amount, price)
+
+
+def cancel_order(order_id: str) -> dict:
+    """Cancel an open CLOB order."""
+    try:
+        client = _get_clob_client()
+        resp = client.cancel(order_id)
+        logger.info(f"Order cancelled: {order_id}")
+        return {"status": "cancelled", "order_id": order_id, "response": resp}
+    except Exception as e:
+        logger.error(f"Cancel failed: {e}")
+        return {"status": "error", "order_id": order_id, "error": str(e)}
+
+
+def cancel_all_orders() -> dict:
+    """Cancel all open CLOB orders."""
+    try:
+        client = _get_clob_client()
+        resp = client.cancel_all()
+        logger.info("All orders cancelled")
+        return {"status": "cancelled_all", "response": resp}
+    except Exception as e:
+        logger.error(f"Cancel all failed: {e}")
+        return {"status": "error", "error": str(e)}
+
+
+def get_open_orders() -> list[dict]:
+    """Get all open CLOB orders."""
+    try:
+        client = _get_clob_client()
+        return client.get_orders()
+    except Exception as e:
+        logger.error(f"Failed to get orders: {e}")
+        return []
+
+
+def sell_position(
+    token_id: str,
+    amount: float,
+    price: float,
+    condition_id: str = "",
+    side: str = "",
+    order_type: str = "GTC",
+    dry_run: bool = False,
+) -> dict:
+    """
+    Sell (exit) a position by placing a sell order on the CLOB.
+
+    Args:
+        token_id: CLOB token ID for the side being sold
+        amount: Number of tokens to sell
+        price: Limit price
+        condition_id: For position tracking
+        side: "YES" or "NO" — which side is being sold
+        order_type: "GTC", "GTD", "FOK"
+        dry_run: If True, log only
+    """
+    if dry_run:
+        logger.info(f"[DRY RUN] Would sell {amount} {side} tokens at ${price:.4f}")
+        return {"status": "dry_run", "amount": amount, "price": price, "side": side}
+
+    result = place_order(token_id, "SELL", amount, price, order_type=order_type)
+    if result and result["status"] == "placed":
+        from modules.positions import close_position_by_market
+        closed = close_position_by_market(condition_id, side, price)
+        return {
+            "status": "sold",
+            "amount": amount,
+            "price": price,
+            "side": side,
+            "order": result,
+            "position_closed": closed,
+        }
+
+    return {"status": "sell_failed", "amount": amount, "price": price, "order": result}
 
 
 def buy(
