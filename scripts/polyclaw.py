@@ -219,6 +219,8 @@ def buy_cmd(condition_id, side, amount, skip_sell, dry_run):
         side=side,
         amount_usdc=amount,
         current_price=current_price,
+        yes_token_id=market.get("yes_token_id"),
+        no_token_id=market.get("no_token_id"),
         skip_sell=skip_sell,
         dry_run=effective_dry_run,
     )

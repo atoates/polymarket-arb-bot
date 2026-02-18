@@ -136,6 +136,8 @@ def buy(
     side: str,
     amount_usdc: float,
     current_price: float,
+    yes_token_id: str | None = None,
+    no_token_id: str | None = None,
     skip_sell: bool = False,
     dry_run: bool = False,
 ) -> dict:
@@ -143,14 +145,20 @@ def buy(
     Execute a buy order using split + CLOB strategy.
 
     1. Split USDC.e → YES + NO tokens
-    2. Sell the unwanted side on CLOB
+    2. Sell the unwanted side on CLOB (using clob_token_id, NOT condition_id)
     3. Record position
+
+    Args:
+        condition_id: Market condition ID (for CTF split)
+        yes_token_id: CLOB token ID for YES outcome
+        no_token_id: CLOB token ID for NO outcome
     """
     side = side.upper()
     if side not in ("YES", "NO"):
         raise ValueError(f"Side must be YES or NO, got: {side}")
 
     unwanted_side = "NO" if side == "YES" else "YES"
+    unwanted_token_id = no_token_id if side == "YES" else yes_token_id
 
     if dry_run:
         logger.info(f"[DRY RUN] Would buy {side} on {condition_id} for ${amount_usdc}")
@@ -166,12 +174,14 @@ def buy(
     if split_result["status"] != "success":
         return {"status": "split_failed", **split_result}
 
-    # Step 2: Sell unwanted side on CLOB
+    # Step 2: Sell unwanted side on CLOB (requires the CLOB token ID)
     sell_result = None
-    if not skip_sell:
+    if not skip_sell and unwanted_token_id:
         unwanted_price = 1.0 - current_price
         token_count = amount_usdc  # After split, you get `amount` tokens of each side
-        sell_result = sell_on_clob(condition_id, token_count, unwanted_price)
+        sell_result = sell_on_clob(unwanted_token_id, token_count, unwanted_price)
+    elif not skip_sell and not unwanted_token_id:
+        logger.warning("No CLOB token ID for unwanted side — skipping CLOB sell")
 
     # Step 3: Compute entry price and record position
     recovered = 0.0
