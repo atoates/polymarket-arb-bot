@@ -157,16 +157,48 @@ def wallet():
 
 @wallet.command("status")
 def wallet_status():
-    """Show wallet address, POL balance, and USDC.e balance."""
-    from modules.wallet import get_wallet_status
+    """Show wallet address, POL balance, USDC, and USDC.e balances."""
+    from modules.swap import get_balances
 
-    status = get_wallet_status()
+    b = get_balances()
     console.print(Panel(
-        f"Address: [bold]{status['address']}[/bold]\n"
-        f"POL:     {status['pol_balance']:.4f}\n"
-        f"USDC.e:  [green]${status['usdc_balance']:.2f}[/green]",
+        f"Address: [bold]{b['address']}[/bold]\n"
+        f"POL:     {b['pol_balance']:.4f}\n"
+        f"USDC:    [green]${b['usdc_balance']:.2f}[/green]\n"
+        f"USDC.e:  [green]${b['usdc_e_balance']:.2f}[/green]",
         title="Wallet Status",
     ))
+
+
+@wallet.command("swap")
+@click.argument("amount", type=float)
+@click.option("--slippage", default=10, help="Slippage in basis points (default 10 = 0.1%)")
+@click.option("--dry-run", is_flag=True, help="Build tx but don't send")
+def wallet_swap(amount, slippage, dry_run):
+    """Swap native USDC → USDC.e via Uniswap V3."""
+    from modules.swap import swap_usdc_to_usdc_e
+
+    console.print(
+        f"Swapping [bold]${amount:.2f} USDC → USDC.e[/bold] "
+        f"(slippage: {slippage}bps)"
+    )
+
+    result = swap_usdc_to_usdc_e(amount, slippage_bps=slippage, dry_run=dry_run)
+
+    if result["status"] == "dry_run":
+        console.print(
+            f"[yellow]DRY RUN[/yellow] — would swap ${result['amount_in']:.2f} USDC "
+            f"(min out: ${result['min_out']:.2f} USDC.e)"
+        )
+    elif result["status"] == "success":
+        console.print(
+            f"[green]Swap complete![/green]\n"
+            f"  TX: {result['tx_hash']}\n"
+            f"  In:  ${result['amount_in']:.2f} USDC\n"
+            f"  Min: ${result['min_out']:.2f} USDC.e"
+        )
+    else:
+        console.print(f"[red]Swap failed: {result['status']}[/red]")
 
 
 @wallet.command("approve")
