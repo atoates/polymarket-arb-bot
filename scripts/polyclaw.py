@@ -44,7 +44,13 @@ console = Console()
 
 def run_async(coro):
     """Run an async coroutine from sync click commands."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop and loop.is_running():
+        return loop.run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # ── Markets ─────────────────────────────────────────────────────────

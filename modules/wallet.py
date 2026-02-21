@@ -8,6 +8,7 @@ Polymarket contracts:
 """
 import os
 from web3 import Web3
+from config import CHAIN_ID
 from utils.logger import get_logger
 
 logger = get_logger("wallet")
@@ -125,7 +126,7 @@ def approve_contracts() -> list[dict]:
                 "nonce": nonce,
                 "gas": 60_000,
                 "gasPrice": w3.eth.gas_price,
-                "chainId": 137,
+                "chainId": CHAIN_ID,
             })
 
             signed = account.sign_transaction(tx)

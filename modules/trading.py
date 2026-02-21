@@ -11,6 +11,7 @@ import json
 import time
 from py_clob_client.client import ClobClient
 from py_clob_client.clob_types import OrderArgs, OrderType
+from config import CHAIN_ID
 from modules.wallet import _get_web3, _get_account, CTF_EXCHANGE, CTF_CONTRACT, USDC_E
 from modules.positions import record_position
 from utils.logger import get_logger
@@ -18,8 +19,8 @@ from utils.notifier import notify_trade
 
 logger = get_logger("trading")
 
-# CTF Exchange partial ABI for splitPosition
-CTF_EXCHANGE_ABI = [
+# Conditional Tokens Framework ABI — splitPosition lives on CTF_CONTRACT
+CTF_ABI = [
     {
         "inputs": [
             {"name": "collateralToken", "type": "address"},
@@ -87,7 +88,7 @@ def _get_clob_client() -> ClobClient:
         creds = client.create_or_derive_api_creds()
         if creds:
             client.set_api_creds(creds)
-            logger.info(f"Derived CLOB API key: {creds.api_key[:12]}...")
+            logger.info("CLOB API credentials derived successfully")
         else:
             raise EnvironmentError(
                 "Failed to derive CLOB credentials. Set POLYMARKET_API_KEY, "
@@ -104,7 +105,7 @@ def split_position(condition_id: str, amount_usdc: float) -> dict:
     amount_raw = int(amount_usdc * 1e6)  # 6 decimals
 
     # splitPosition is on the Conditional Tokens contract, NOT the Exchange
-    ctf = w3.eth.contract(address=CTF_CONTRACT, abi=CTF_EXCHANGE_ABI)
+    ctf = w3.eth.contract(address=CTF_CONTRACT, abi=CTF_ABI)
 
     # Partition: [1, 2] = [YES, NO] for binary markets
     partition = [1, 2]
@@ -135,7 +136,7 @@ def split_position(condition_id: str, amount_usdc: float) -> dict:
         "nonce": w3.eth.get_transaction_count(account.address),
         "gas": 300_000,
         "gasPrice": w3.eth.gas_price,
-        "chainId": 137,
+        "chainId": CHAIN_ID,
     })
 
     signed = account.sign_transaction(tx)

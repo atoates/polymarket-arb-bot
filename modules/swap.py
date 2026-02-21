@@ -6,6 +6,7 @@ This module handles the conversion via Uniswap V3 exactInputSingle.
 """
 import os
 from web3 import Web3
+from config import CHAIN_ID
 from modules.wallet import _get_web3, _get_account, USDC_E, ERC20_ABI
 from utils.logger import get_logger
 
@@ -114,7 +115,7 @@ def swap_usdc_to_usdc_e(
             "nonce": w3.eth.get_transaction_count(address),
             "gas": 60_000,
             "gasPrice": w3.eth.gas_price,
-            "chainId": 137,
+            "chainId": CHAIN_ID,
         })
         signed = account.sign_transaction(approve_tx)
         approve_tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
@@ -145,7 +146,7 @@ def swap_usdc_to_usdc_e(
         "nonce": nonce,
         "gas": 200_000,
         "gasPrice": w3.eth.gas_price,
-        "chainId": 137,
+        "chainId": CHAIN_ID,
         "value": 0,
     })
 
@@ -216,7 +217,7 @@ def swap_usdc_e_to_usdc(
             "nonce": w3.eth.get_transaction_count(address),
             "gas": 60_000,
             "gasPrice": w3.eth.gas_price,
-            "chainId": 137,
+            "chainId": CHAIN_ID,
         })
         signed = account.sign_transaction(approve_tx)
         approve_tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
@@ -246,7 +247,7 @@ def swap_usdc_e_to_usdc(
         "nonce": nonce,
         "gas": 200_000,
         "gasPrice": w3.eth.gas_price,
-        "chainId": 137,
+        "chainId": CHAIN_ID,
         "value": 0,
     })
 
